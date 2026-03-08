@@ -126,7 +126,6 @@ class bridge_intance(threading.Thread):
             }
             msg.update(payload)
 
-            print(msg)
             json_line=json.dumps(msg)+'\n'
             self.sm.write(json_line.encode("utf-8"))
 
@@ -143,7 +142,6 @@ class bridge_intance(threading.Thread):
             }
             msg.update(payload)
 
-            print(msg)
             json_line=json.dumps(msg)+'\n'
             self.sm.write(json_line.encode("utf-8"))
 
@@ -155,11 +153,26 @@ class bridge_intance(threading.Thread):
             while self.keep_alive and self.sm and self.sm.is_open:
                 line=self.sm.readline() #blocking
 
+
                 if not line:
-                    break
+                    continue
 
                 #process the line
-                payload=json.loads(line)
+                decoded=line.decode("utf-8", errors='ignore').strip()
+                if not line:
+                    continue
+
+                if not decoded.startswith('{'):#stray logs
+                    print(f"{self.task_name} ESP_LOG{line}")
+                    continue
+
+                try:
+                    payload=json.loads(decoded)
+
+                except (json.JSONDecodeError, UnicodeDecodeError) as e:
+                    print(f"{self.task_name} parse error: {e} | Raw: {line}")
+                    continue 
+                
 
                 if "ID" in payload:
                     id=payload.pop("ID")
@@ -186,6 +199,7 @@ class bridge_intance(threading.Thread):
             print(f"{self.task_name} -run encountered exception: {e}, {payload}")
 
 try:
+    print("starting")
     bridge0=bridge_intance("bridge0")
     bridge0.uart_connect(UART_PORT, BAUDRATE)
 
@@ -194,4 +208,9 @@ try:
 
 except KeyboardInterrupt:
     print("stopping")
+
+    bridge0.keep_alive=False
+
+    bridge0.join(timeout=1)
+
     bridge0.deinit()
