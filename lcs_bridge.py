@@ -136,7 +136,16 @@ class bridge_intance(threading.Thread):
     def starter_from_server_cb(self, client, userdata, msg):
         try:
             payload=json.loads(msg.payload.decode())
-            print(payload)
+
+            msg={
+                "JT": "sta",
+                "ID": self.dev_id,
+            }
+            msg.update(payload)
+
+            print(msg)
+            json_line=json.dumps(msg)+'\n'
+            self.sm.write(json_line.encode("utf-8"))
 
         except Exception as e:
             print(f"json parsing exception: {e}")
