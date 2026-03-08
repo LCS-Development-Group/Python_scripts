@@ -119,7 +119,6 @@ class bridge_intance(threading.Thread):
     def regulator_from_server_cb(self, client, userdata, msg):
         try:
             payload=json.loads(msg.payload.decode())
-            print(payload)
 
             msg={
                 "JT": "reg",
@@ -156,7 +155,6 @@ class bridge_intance(threading.Thread):
                 if "ID" in payload:
                     id=payload.pop("ID")
                     if id!=self.dev_id:
-                        print(f"New id: {self.dev_id}->{id}")
                         self.dev_id=id
                         self.reconnect_mqtts()
                 else:
@@ -168,10 +166,9 @@ class bridge_intance(threading.Thread):
                         case "sen":
                             mqtt_result_handler(self.mqtt_client.publish(self.readings_topic, json.dumps(payload)))
                         case "reg":
-                            print(f"responding with: {payload}")
                             mqtt_result_handler(self.mqtt_client.publish(self.regulator_return_topic, json.dumps(payload)))
                         case "sta":
-                            print("sta ret")
+                            mqtt_result_handler(self.mqtt_client.publish(self.starter_return_topic, json.dumps(payload)))
                 else:
                     print(f"{self.task_name} no jason type")
 
