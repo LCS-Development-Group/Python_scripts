@@ -17,8 +17,9 @@ REGULATOR_TOPIC="chambers/+/regulator/get"
 CSV_HEADER_NO_REG=["Num.", "Timestamp [s] (since ","RH_int [%]","T_int [°C]","RH_ext [%]","T_ext [°C]","I_memb [A]","U_memb [V]","P_memb [W]"]
 CSV_HEADER_REG=["Set RH [%]"," Hist. [%]"]
 csv_line_no_reg=[None]*len(CSV_HEADER_NO_REG)
-csv_line_reg=[None]*(len(CSV_HEADER_REG)+len(CSV_HEADER_NO_REG))
+csv_line_reg=[None]*len(CSV_HEADER_REG)
 
+pwd_prefix=r"/home/lcsuser/data_partition/LCS_CSVs"
 
 @dataclass
 class logger_t:
@@ -32,7 +33,7 @@ class logger_t:
     reg_H: float=0.0
     file_handle=None
     csv_writer=None
-    filename: str=r"D:/Desktop/test/def.csv"
+    filename: str=r"def.csv"
     max_records: int=10
     save_interval: int=1
     save_counter: int=1
@@ -68,12 +69,14 @@ def init_loggers(client):
             print(f"Failed to send message: {result.rc}")
 
 def open_new_file(dev_id):
-    path=Path(loggers[dev_id].filename).resolve()
-    stem=path.stem
-    suffix=path.suffix
-    directory=path.parent
+    mnt_path=Path(pwd_prefix).resolve()
+    usr_path=Path(loggers[dev_id].filename)
+    full_path=(mnt_path / usr_path).resolve()
+    stem=full_path.stem
+    suffix=full_path.suffix
+    directory=full_path.parent
 
-    print("opening new file")
+    #print("opening new file")
     directory.mkdir(parents=True, exist_ok=True)
 
     if loggers[dev_id].restarts > 0:
@@ -87,7 +90,7 @@ def open_new_file(dev_id):
             base_stem=stem
             counter=1
 
-        new_path=path
+        new_path=full_path
         while new_path.exists():
             new_path=directory / f"{base_stem}({counter}){suffix}"
             counter+=1
@@ -111,8 +114,8 @@ def open_new_file(dev_id):
         
     loggers[dev_id].file_handle.flush()
 
-    print(f"Ch_{dev_id} logging to: {new_path}")
-    return new_path.as_posix()
+    #print(f"Ch_{dev_id} logging to: {new_path}")
+    return new_path.relative_to(mnt_path).as_posix()
 
         
 
@@ -162,7 +165,7 @@ def logger_msg_received_callback(client, userdata, message):
        
         #print(f"responded to {loggers[dev_id].topic_send}:  {json.dumps(logger_json)}")
 
-        result=client.publish(loggers[dev_id].topic_send, json.dumps(logger_json))
+        result=client.publish(loggers[dev_id].topic_send, json.dumps(logger_json), retain=True)
         
         if result.rc!=mqtt.MQTT_ERR_SUCCESS:
             print(f"Failed to send message: {result.rc}")
@@ -242,7 +245,7 @@ try:
     client.message_callback_add(READINGS_TOPIC, saver_msg_received_callback)
 
     client.connect(BROKER, PORT, 60)
-    print(f"Connected client to {BROKER}...")
+    #print(f"Connected client to {BROKER}...")
     
     
     client.subscribe(LOGGER_SETTINGS_TOPIC)
@@ -253,15 +256,33 @@ try:
 
 
     client.loop_start()
-    print("start")
+    #print("start")
     while True:
         time.sleep(1)
 
-except KeyboardInterrupt:
-    print("stopping")
+except not (KeyboardInterrupt, SystemExit):
+    pass
+
+except Exception as e:
+    print(f"Fatal error: {e}")
+    
+finally:
+    #print("stopping")
     client.loop_stop()
     client.disconnect()
 
     for dev_id in range(CHAMBER_NUM):
+
+        logger_json={
+            "FN": loggers[dev_id].filename,
+            "MR": loggers[dev_id].max_records,
+            "SI": loggers[dev_id].save_interval,
+            "EN": "OFF",
+            "IR": "OFF",
+        }
+        result=client.publish(loggers[dev_id].topic_send, json.dumps(logger_json), retain=True)
+        if result.rc!=mqtt.MQTT_ERR_SUCCESS:
+            print(f"Failed to send message: {result.rc}")
+
         if loggers[dev_id].file_handle:
             loggers[dev_id].file_handle.close()
