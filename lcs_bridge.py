@@ -143,6 +143,7 @@ class bridge_intance(threading.Thread):
             msg.update(payload)
 
             json_line=json.dumps(msg)+'\n'
+            print(f"\nattempt to send: {json_line}\n")
             self.sm.write(json_line.encode("utf-8"))
 
         except Exception as e:
