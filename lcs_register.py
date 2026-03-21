@@ -37,7 +37,6 @@ regulator_list=[
     regulator_t("SP", "%", "SP", "number", 0, 100, 0.5),
     regulator_t("Hist", "%", "HI", "number", 0.1, 10, 0.1),
     regulator_t("reg_en", "", "EN", "switch"),
-    regulator_t("memb_en", "", "ME", "switch"),
 ]
 
 

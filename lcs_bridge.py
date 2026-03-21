@@ -143,7 +143,6 @@ class bridge_intance(threading.Thread):
             msg.update(payload)
 
             json_line=json.dumps(msg)+'\n'
-            print(f"\nattempt to send: {json_line}\n")
             self.sm.write(json_line.encode("utf-8"))
 
         except Exception as e:
@@ -189,7 +188,7 @@ class bridge_intance(threading.Thread):
                         case "sen":
                             mqtt_result_handler(self.mqtt_client.publish(self.readings_topic, json.dumps(payload)))
                         case "reg":
-                            mqtt_result_handler(self.mqtt_client.publish(self.regulator_return_topic, json.dumps(payload)))
+                            mqtt_result_handler(self.mqtt_client.publish(self.regulator_return_topic, json.dumps(payload), retain=True))
                         case "sta":
                             mqtt_result_handler(self.mqtt_client.publish(self.starter_return_topic, json.dumps(payload)))
                 else:
