@@ -6,18 +6,17 @@ import re
 from dataclasses import dataclass
 import csv
 from datetime import datetime
+import threading
 
 BROKER="LCSRP5"
 PORT=1883
-CHAMBER_NUM=10
+CHAMBER_NUM=6
 LOGGER_SETTINGS_TOPIC="chambers/+/logger/set"
 READINGS_TOPIC="chambers/+/readings"
 REGULATOR_TOPIC="chambers/+/regulator/get"
 
 CSV_HEADER_NO_REG=["Num.", "Timestamp [s] (since ","RH_int [%]","T_int [°C]","RH_ext [%]","T_ext [°C]","I_memb [A]","U_memb [V]","P_memb [W]"]
 CSV_HEADER_REG=["Set RH [%]"," Hist. [%]"]
-csv_line_no_reg=[None]*len(CSV_HEADER_NO_REG)
-csv_line_reg=[None]*len(CSV_HEADER_REG)
 
 pwd_prefix=r"/home/lcsuser/data_partition/LCS_CSVs"
 
@@ -26,6 +25,7 @@ class logger_t:
     dev_id: int
     topic_receive: str
     topic_send: str
+    mutex: threading.Lock= None
     state: bool=False
     prev_state: bool=False
     include_reg: bool=False
@@ -33,13 +33,16 @@ class logger_t:
     reg_H: float=0.0
     file_handle=None
     csv_writer=None
-    filename: str=r"def.csv"
+    filename: str=r""
+    file_postfix: str=r""
     max_records: int=10
     save_interval: int=1
     save_counter: int=1
     counter: int=0
     restarts: int=0
-    timestamp_start: float=0.0
+
+    def __post_init__(self):
+        self.mutex=threading.Lock()
 
 loggers: dict[int, logger_t]={}
 
@@ -70,30 +73,22 @@ def init_loggers(client):
 
 def open_new_file(dev_id):
     mnt_path=Path(pwd_prefix).resolve()
-    usr_path=Path(loggers[dev_id].filename)
-    full_path=(mnt_path / usr_path).resolve()
-    stem=full_path.stem
-    suffix=full_path.suffix
-    directory=full_path.parent
 
-    #print("opening new file")
-    directory.mkdir(parents=True, exist_ok=True)
+    if loggers[dev_id].restarts==0:
+        new_path=f"{datetime.now().strftime("%Y-%m-%d_%H:%M:%S")}_ch{dev_id}"
 
-    if loggers[dev_id].restarts > 0:
-        new_path=directory / f"{stem}_{loggers[dev_id].restarts}{suffix}"
+        if loggers[dev_id].file_postfix:
+            new_path+=f"_{loggers[dev_id].file_postfix}"
+
+        new_path+=".csv" 
+        loggers[dev_id].filename=new_path  
+
     else:
-        match = re.search(r"(.*)\((\d+)\)$", stem)
-        if match:
-            base_stem=match.group(1).strip()
-            counter=int(match.group(2))+1
-        else:
-            base_stem=stem
-            counter=1
+        new_path=Path(loggers[dev_id].filename).stem
+        new_path=re.sub(r'_\d+$', f'', new_path)
+        new_path+=f"_{loggers[dev_id].restarts}.csv"
 
-        new_path=full_path
-        while new_path.exists():
-            new_path=directory / f"{base_stem}({counter}){suffix}"
-            counter+=1
+    new_path=mnt_path / new_path
 
     if loggers[dev_id].file_handle:
         loggers[dev_id].file_handle.close()
@@ -102,73 +97,69 @@ def open_new_file(dev_id):
     loggers[dev_id].csv_writer=csv.writer(loggers[dev_id].file_handle)
     
     #header
-    loggers[dev_id].timestamp_start=round(time.time(), 3)
-    header=list(CSV_HEADER_NO_REG)
-    header[1]=f"{header[1]}{loggers[dev_id].timestamp_start}"
-
     if loggers[dev_id].include_reg==True:
-        loggers[dev_id].csv_writer.writerow(header+CSV_HEADER_REG)
+        loggers[dev_id].csv_writer.writerow(CSV_HEADER_NO_REG+CSV_HEADER_REG)
         
     elif loggers[dev_id].include_reg==False:
-        loggers[dev_id].csv_writer.writerow(header)
+        loggers[dev_id].csv_writer.writerow(CSV_HEADER_NO_REG)
         
     loggers[dev_id].file_handle.flush()
 
-    #print(f"Ch_{dev_id} logging to: {new_path}")
     return new_path.relative_to(mnt_path).as_posix()
 
         
-
 def logger_msg_received_callback(client, userdata, message):
     try:
         split_topic=message.topic.split('/')
         dev_id=int(split_topic[1])
         payload=json.loads(message.payload.decode())
-        #print(f"update for ch_{dev_id}: {payload}")
 
-        if "FN" in payload:
-            loggers[dev_id].filename=payload["FN"]
-            if loggers[dev_id].state==True:
-                stop_recording(dev_id)
+        with loggers[dev_id].mutex:#mutex lock
 
-        if "MR" in payload:
-            loggers[dev_id].max_records=int(payload["MR"])
-
-        if "SI" in payload:
-            loggers[dev_id].save_interval=int(payload["SI"])
-
-        if "IR" in payload:
-            loggers[dev_id].include_reg=True if payload.get("IR")=="ON" else False
-            if loggers[dev_id].state==True:
-                stop_recording(dev_id)
-
-        if "EN" in payload:
-            loggers[dev_id].prev_state=loggers[dev_id].state
-            loggers[dev_id].state=True if payload.get("EN")=="ON" else False
-
-            if loggers[dev_id].state==True:
-                if loggers[dev_id].prev_state==False:
-                    start_recording(dev_id)
-
-            elif loggers[dev_id].state==False:
-                if loggers[dev_id].prev_state==True:
+            if "FP" in payload:
+                loggers[dev_id].file_postfix=payload["FP"]
+                if loggers[dev_id].state==True:
                     stop_recording(dev_id)
 
-        #confirm receiving the new settings
-        logger_json={
-            "FN": loggers[dev_id].filename,
-            "MR": loggers[dev_id].max_records,
-            "SI": loggers[dev_id].save_interval,
-            "EN": "ON" if loggers[dev_id].state==True else "OFF",
-            "IR": "ON" if loggers[dev_id].include_reg==True else "OFF",
-        }
-       
-        #print(f"responded to {loggers[dev_id].topic_send}:  {json.dumps(logger_json)}")
+            if "MR" in payload:
+                loggers[dev_id].max_records=int(payload["MR"])
 
-        result=client.publish(loggers[dev_id].topic_send, json.dumps(logger_json), retain=True)
+            if "SI" in payload:
+                loggers[dev_id].save_interval=int(payload["SI"])
+
+            if "IR" in payload:
+                loggers[dev_id].include_reg=True if payload.get("IR")=="ON" else False
+                if loggers[dev_id].state==True:
+                    stop_recording(dev_id)
+
+            if "EN" in payload:
+                loggers[dev_id].prev_state=loggers[dev_id].state
+                loggers[dev_id].state=True if payload.get("EN")=="ON" else False
+
+                if loggers[dev_id].state==True:
+                    if loggers[dev_id].prev_state==False:
+                        start_recording(dev_id)
+
+                elif loggers[dev_id].state==False:
+                    if loggers[dev_id].prev_state==True:
+                        stop_recording(dev_id)
+
+            #confirm receiving the new settings
+            logger_json={
+                "FN": loggers[dev_id].filename,
+                "FP": loggers[dev_id].file_postfix,
+                "MR": loggers[dev_id].max_records,
+                "SI": loggers[dev_id].save_interval,
+                "EN": "ON" if loggers[dev_id].state==True else "OFF",
+                "IR": "ON" if loggers[dev_id].include_reg==True else "OFF",
+            }
         
-        if result.rc!=mqtt.MQTT_ERR_SUCCESS:
-            print(f"Failed to send message: {result.rc}")
+            #print(f"responded to {loggers[dev_id].topic_send}:  {json.dumps(logger_json)}")
+
+            result=client.publish(loggers[dev_id].topic_send, json.dumps(logger_json), retain=True)
+            
+            if result.rc!=mqtt.MQTT_ERR_SUCCESS:
+                print(f"Failed to send message: {result.rc}")
 
     except Exception as e:
         print(f"cfg_cb except: {e}")
@@ -192,30 +183,30 @@ def saver_msg_received_callback(client, userdata, message):
     try:
         split_topic=message.topic.split('/')
         dev_id=int(split_topic[1])
+        logger=loggers[dev_id]
+        with logger.mutex:#mutex lock
+            if logger.state==True:
+                if logger.save_counter>=logger.save_interval:
+                    logger.save_counter=1
 
-        if loggers[dev_id].state==True:
-            if loggers[dev_id].save_counter>=loggers[dev_id].save_interval:
-                loggers[dev_id].save_counter=1
+                    readings=json.loads(message.payload.decode())
+                    csv_line_no_reg=[logger.counter+1, datetime.now().strftime("%H:%M:%S.%f")[:-3]]+list(readings.values())
 
-                readings=json.loads(message.payload.decode())
-                csv_line_no_reg=[loggers[dev_id].counter+1, round(time.time()-loggers[dev_id].timestamp_start, 3)]+list(readings.values())
+                    if logger.counter>=logger.max_records:
+                        logger.restarts+=1    
+                        logger.counter=0
+                        open_new_file(dev_id)
+                    
+                    if logger.include_reg==False:
+                        logger.csv_writer.writerow(csv_line_no_reg)
+                    else:
+                        logger.csv_writer.writerow(csv_line_no_reg+[logger.reg_sp, logger.reg_H])
+                    logger.file_handle.flush()
+                    logger.counter+=1
+                    #print(f"saved {time.time()}")
 
-                if loggers[dev_id].counter>=loggers[dev_id].max_records:
-                    loggers[dev_id].restarts+=1    
-                    loggers[dev_id].counter=0
-                    open_new_file(dev_id)
-                
-                if loggers[dev_id].include_reg==False:
-                    loggers[dev_id].csv_writer.writerow(csv_line_no_reg)
                 else:
-                    loggers[dev_id].csv_writer.writerow(csv_line_no_reg+csv_line_reg)
-
-                loggers[dev_id].file_handle.flush()
-                loggers[dev_id].counter+=1
-                #print(f"saved {time.time()}")
-
-            else:
-                loggers[dev_id].save_counter+=1
+                    logger.save_counter+=1
 
     except Exception as e:
         print(f"sav_cb except: {e}")
@@ -226,12 +217,12 @@ def reg_msg_received_callback(client, usedata, message):
         dev_id=int(split_topic[1])
 
         payload=json.loads(message.payload.decode())
-        if "SP" in payload:
-            loggers[dev_id].reg_sp=float(payload['SP'])
-            csv_line_reg[0]=loggers[dev_id].reg_sp
-        if "HI" in payload:
-            loggers[dev_id].reg_H=float(payload['HI'])
-            csv_line_reg[1]=loggers[dev_id].reg_H
+
+        with loggers[dev_id].mutex:
+            if "SP" in payload:
+                loggers[dev_id].reg_sp=float(payload['SP'])
+            if "HI" in payload:
+                loggers[dev_id].reg_H=float(payload['HI'])
 
     except Exception as e:
         print(f"reg_cb except: {e}")
