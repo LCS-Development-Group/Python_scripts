@@ -15,7 +15,7 @@ LOGGER_SETTINGS_TOPIC="chambers/+/logger/set"
 READINGS_TOPIC="chambers/+/readings"
 REGULATOR_TOPIC="chambers/+/regulator/get"
 
-CSV_HEADER_NO_REG=["Num.", "Timestamp [s] (since ","RH_int [%]","T_int [°C]","RH_ext [%]","T_ext [°C]","I_memb [A]","U_memb [V]","P_memb [W]"]
+CSV_HEADER_NO_REG=["Num.", "Timestamp","RH_int [%]","T_int [°C]","RH_ext [%]","T_ext [°C]","I_memb [A]","U_memb [V]","P_memb [W]"]
 CSV_HEADER_REG=["Set RH [%]"," Hist. [%]"]
 
 pwd_prefix=r"/home/lcsuser/data_partition/LCS_CSVs"
@@ -251,8 +251,8 @@ try:
     while True:
         time.sleep(1)
 
-except not (KeyboardInterrupt, SystemExit):
-    pass
+except (KeyboardInterrupt, SystemExit):
+    raise
 
 except Exception as e:
     print(f"Fatal error: {e}")
