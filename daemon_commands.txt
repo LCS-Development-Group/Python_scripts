@@ -1,0 +1,7 @@
+[service log]
+	journalctl -u lcs_logger.service
+
+[srivice status]
+	systemctl status lcs_logger.service
+
+[start service]
