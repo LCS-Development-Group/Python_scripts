@@ -1,0 +1,4 @@
+colorzero==2.0
+gpiozero==2.0.1.post3
+paho-mqtt==2.1.0
+setuptools==84.0.0
