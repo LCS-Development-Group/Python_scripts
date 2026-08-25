@@ -15,7 +15,8 @@ sensor_tmpl={
         ("Memb_cur",    "MC", "A"),
         ("Memb_vol",    "MV", "V"),
         ("Memb_pow",    "MP", "W")],
-    "log": [],
+    "log": [
+        ("File_name",   "FN", "")],
 }
 
 numbers_tmpl={
@@ -32,7 +33,10 @@ switch_tmpl={
         ("reg_en","EN")],
     "log": [
         ("logger_state","EN"),
-        ("include_regulator","IR")]
+        ("include_regulator","IR"),
+        ("include_chamber","IC"),
+        ("include_aux","IA"),
+        ("include_membrane","IM")]
 }
 
 text_tmpl={
@@ -154,6 +158,9 @@ class Registerer:
         for name, code in text_tmpl["log"]:
             self.__send_config("text",self.__generate_text(name=name, stat_t=stat_t, cmd_t=cmd_t, json_code=code, unique_id=uid_pref+code, dev=ch_dev)) 
 
+        for name, code, unit in sensor_tmpl["log"]:
+            self.__send_config("sensor",self.__generate_sensor(name=name, stat_t=stat_t, json_code=code, unique_id=uid_pref+code, dev=ch_dev))
+
         '''starter'''
         #WIP
 
@@ -169,7 +176,7 @@ class Registerer:
         topic_t=f"chambers/{chamber_id}/misc/conn_stat"
         name,code=MISC_conn_status
         self.__send_config("sensor",self.__generate_sensor(name=name, stat_t=topic_t, json_code=code, unique_id=uid_pref+code, dev=ch_dev))
-
+        self.client.publish(topic=topic_t, payload=json.dumps({"CS":"Offline"}), qos=0, retain=True)#just init
 
 
 
@@ -192,6 +199,7 @@ class Registerer:
 
 if __name__=="__main__":
     #cmd parse
+    regist=None
     try:
         if len(sys.argv)!=2:
             print("Usage: python ./register_chamber.py <chamber_id>\n")
@@ -216,5 +224,6 @@ if __name__=="__main__":
         print(f"EXCEPTION: {e}")
 
     finally:
-        regist.close()
+        if regist is not None:
+            regist.close()
     
