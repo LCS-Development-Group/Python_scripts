@@ -47,6 +47,14 @@ text_tmpl={
 MISC_chamber_nick=("chamber_nick", "CN")
 MISC_conn_status=("Conn_status", "CS")
 
+
+lab_sensor_tmpl={
+    "sen": [
+    ("T_room",       "TL", "\u00b0C"),
+    ("RH_room",      "HL", "%"),
+    ("T_RP5",       "TR", "\u00b0C")]
+}
+
 class Registerer:
     def __init__(self):
         self.client=mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION2)
@@ -111,7 +119,7 @@ class Registerer:
             "payload_off": "OFF"}
         return payload
 
-    def __generate_text(self, name: str, stat_t:str, cmd_t:str, json_code: str, unique_id: str, dev:dict)->dict:
+    def __generate_text(self, name: str, stat_t:str, cmd_t:str, json_code: str, unique_id: str, dev:dict, retain:bool=None)->dict:
         payload={
             "name": name, 
             "stat_t": stat_t, 
@@ -120,6 +128,9 @@ class Registerer:
             "dev": dev, 
             "val_tpl": f"{{{{value_json.{json_code}}}}}", 
             "cmd_tpl": f"{{\"{json_code}\": \"{{{{ value }}}}\" }}"}
+        if retain is not None:
+            payload["ret"]=retain
+
         return payload
 
     def register_chamber(self, chamber_id:int):
@@ -128,10 +139,20 @@ class Registerer:
 
         '''sensors'''
         stat_t=f"chambers/{chamber_id}/readings"
+        stat_t2=f"chambers/{chamber_id}/RHT_graph"
         uid_pref=f"ch{chamber_id}_sen_"
         for name, code, unit in sensor_tmpl["sen"]:
-            self.__send_config("sensor",self.__generate_sensor(name=name, stat_t=stat_t, json_code=code, unique_id=uid_pref+code, dev=ch_dev, unit=unit, state_class="measurement"))
+            if code.startswith("M"):
+                temp_t=stat_t
+            else:
+                temp_t=stat_t2
+
+            self.__send_config("sensor",self.__generate_sensor(name=name, stat_t=temp_t, json_code=code, unique_id=uid_pref+code, dev=ch_dev, unit=unit, state_class="measurement"))
         
+        #initial values (retained)
+        payload=json.dumps({"HI": None, "TI": None, "HE": None, "TE": None, "MC": 0.0, "MV": 0.0, "MP": 0.0})
+        self.client.publish(topic=stat_t, payload=payload, qos=0, retain=True)
+        self.client.publish(topic=stat_t2, payload=payload, qos=0, retain=True)
 
         '''regulator'''
         stat_t=f"chambers/{chamber_id}/regulator/get"
@@ -170,7 +191,7 @@ class Registerer:
         #chamber nickname
         topic_t=f"chambers/{chamber_id}/misc/nickname"
         name, code=MISC_chamber_nick
-        self.__send_config("text",self.__generate_text(name=name, stat_t=topic_t, cmd_t=topic_t, json_code=code, unique_id=uid_pref+code, dev=ch_dev)) 
+        self.__send_config("text",self.__generate_text(name=name, stat_t=topic_t, cmd_t=topic_t, json_code=code, unique_id=uid_pref+code, dev=ch_dev, retain=True)) 
     
         #connstatus
         topic_t=f"chambers/{chamber_id}/misc/conn_stat"
@@ -178,21 +199,19 @@ class Registerer:
         self.__send_config("sensor",self.__generate_sensor(name=name, stat_t=topic_t, json_code=code, unique_id=uid_pref+code, dev=ch_dev))
         self.client.publish(topic=topic_t, payload=json.dumps({"CS":"Offline"}), qos=0, retain=True)#just init
 
-
-
-
-
-
-
-
-
-
-
-
     def register_lab(self):
-        pass #WIP
+        dev={"ids": [f"lab"], "name": f"Lab 141"}
+        print(f"\nRegistering Lab:")
 
+        '''readings'''
+        uid_pref="lab_sen_"
+        stat_t="lab/graph"
+        for name, json_code, unit in lab_sensor_tmpl["sen"]:
+            self.__send_config("sensor",self.__generate_sensor(name=name, stat_t=stat_t, json_code=json_code, unique_id=uid_pref+json_code, dev=dev, unit=unit, state_class="measurement"))
 
+        #init value (retained)
+        payload=json.dumps({"TL":None,"HL":None,"TR":None})
+        self.client.publish(topic=stat_t, payload=payload, qos=0, retain=True)
 
 
 
@@ -200,26 +219,37 @@ class Registerer:
 if __name__=="__main__":
     #cmd parse
     regist=None
+    import argparse
+
+    parser=argparse.ArgumentParser(description="Script used to register HA entities\nWARNING: this script overwrites effected entities")
+    subparsers=parser.add_subparsers(dest="mode", required=True, help="Execution mode")
+
+    chamber_parser=subparsers.add_parser("chamber", help="register chamber entities")
+    chamber_parser.add_argument("id", type=str, help="chamber number to register (0, 1,... or 0...2 format). Needed only for \"chamber\" execution mode")
+
+    lab_parser=subparsers.add_parser("lab", help="register lab entities")
+
+    args=parser.parse_args()
+
     try:
-        if len(sys.argv)!=2:
-            print("Usage: python ./register_chamber.py <chamber_id>\n")
-            print("\tchamber_id - chamber number to register (0, 1, 2, ..) or a...b to register a range\n")
-            print("warning: this script overwrites entities in HA")
-            sys.exit(0)
-        else:
-            regist=Registerer()
-            chamber_id_arg=sys.argv[1]
+        regist=Registerer()
 
-
-            if "..." in chamber_id_arg:
-                start, end=map(int, chamber_id_arg.split("..."))
+        if args.mode=="chamber":
+            if "..." in args.chamber_id:
+                start, end=map(int, args.chamber_id.split("..."))
                 end+=1
                 for id in range(start, end):
                     regist.register_chamber(id)
-
+    
             else:
-                id=int(chamber_id_arg)
+                id=int(args.chamber_id)
                 regist.register_chamber(id)
+
+        elif args.mode=="lab":
+            regist.register_lab()
+        else:
+            print("Unknown execution mode")
+        
     except Exception as e:
         print(f"EXCEPTION: {e}")
 

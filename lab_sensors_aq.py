@@ -1,20 +1,21 @@
 import paho.mqtt.client as mqtt
 import json
-import time
 import threading
-import sys
 import signal
 
-MQTT_BROKER="LCSRP5"
+MQTT_BROKER="LCSRP5.local"
 MQTT_PORT=1883
-MQTT_LABSEN_TOPIC="lab/readings"
+MQTT_LAB_SEN_TOPIC="lab/readings"
+MQTT_LAB_SEN_GRAPH_TOPIC="lab/graph"
 RP5_CPU_TEMP_PATH="/sys/devices/virtual/thermal/thermal_zone0/temp"
-SEND_PERIOD_S=1
+SEND_PERIOD_S=5
 
 
 class LabSender:
     def __init__(self):
-        self._soc_temperat=0.0
+        self._RP5_temperat=0.0
+        self._lab_temperat=None
+        self._lab_RH=None
         self._stop_cond=threading.Event()
 
         signal.signal(signal.SIGINT, self._system_signal_handler)
@@ -31,28 +32,28 @@ class LabSender:
     def main_loop(self):
         while not self._stop_cond.is_set():
             try:
-                self._soc_temperat=self._get_soc_temperat()
-                readigns_json=self._assemble_readings_json()
-
-                self.mqtt_client.publish(MQTT_LABSEN_TOPIC, readigns_json)
+                self._RP5_temperat=self._get_RP5_temperat()
+                readigns_json=self._assemble_graph_json()
+                self.mqtt_client.publish(MQTT_LAB_SEN_GRAPH_TOPIC, readigns_json)
                 self._stop_cond.wait(timeout=SEND_PERIOD_S)
 
             except Exception as e:
                 print(f"EXCEPT: {e}")
                 self._stop_cond.set()
-
         self.cleanup()
 
     def cleanup(self):
         pass
 
-    def _assemble_readings_json(self):
+    def _assemble_graph_json(self):
         data={
-            "SOCT":self._soc_temperat,
+            "HL":None,
+            "TL":None,
+            "TR":round(self._RP5_temperat, 2),
         }
         return json.dumps(data)
 
-    def _get_soc_temperat(self):
+    def _get_RP5_temperat(self):
         with open(RP5_CPU_TEMP_PATH, "r") as file:
             return int(file.read().strip())/1000.0
 
