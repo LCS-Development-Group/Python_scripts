@@ -2,6 +2,7 @@ import paho.mqtt.client as mqtt
 import json
 import threading
 import signal
+import sys
 
 MQTT_BROKER="LCSRP5.local"
 MQTT_PORT=1883
@@ -26,7 +27,7 @@ class LabSender:
             self.mqtt_client.connect(host=MQTT_BROKER, port=MQTT_PORT)
 
         except Exception as e:
-            print(f"EXCEPT: {e}")
+            sys.stderr.write(f"[EXCEPT] {e}")
             self._stop_cond.set()
 
     def main_loop(self):
@@ -38,7 +39,7 @@ class LabSender:
                 self._stop_cond.wait(timeout=SEND_PERIOD_S)
 
             except Exception as e:
-                print(f"EXCEPT: {e}")
+                sys.stderr.write(f"[EXCEPT] {e}")
                 self._stop_cond.set()
         self.cleanup()
 

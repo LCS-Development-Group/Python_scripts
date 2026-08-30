@@ -18,13 +18,18 @@ sensor_tmpl={
     "log": [
         ("File_name",   "FN", "")],
 }
+chamber_default_readings={"HI": None, "TI": None, "HE": None, "TE": None, "MC": 0.0, "MV": 0.0, "MP": 0.0}
+chamber_default_regulator={"SP": 0.0, "HI": 0.0, "EN": None}
+chamber_default_logger={"EN": "OFF", "FP": "", "FN": "", "IR": "OFF", "IC": "OFF", "IA": "OFF", "IM": "OFF", "SI": 1, "MR": 10000}
+chamber_default_nickname={"CN": "None"}
+chamber_default_connstat={"CS": "Offline"}
 
 numbers_tmpl={
     "reg": [
         ("SP","SP", "%", 0, 100, 0.5),
         ("Hist","HI", "%", 0, 20, 0.1)],
     "log": [
-        ("logger_max_records","MR", "", "10", "10000", "500"),
+        ("logger_max_records","MR", "", "5000", "50000", "5000"),
         ("logger_save_interval","SI", "s", "1", "60", "1")]
 }
 
@@ -150,7 +155,7 @@ class Registerer:
             self.__send_config("sensor",self.__generate_sensor(name=name, stat_t=temp_t, json_code=code, unique_id=uid_pref+code, dev=ch_dev, unit=unit, state_class="measurement"))
         
         #initial values (retained)
-        payload=json.dumps({"HI": None, "TI": None, "HE": None, "TE": None, "MC": 0.0, "MV": 0.0, "MP": 0.0})
+        payload=json.dumps(chamber_default_readings)
         self.client.publish(topic=stat_t, payload=payload, qos=0, retain=True)
         self.client.publish(topic=stat_t2, payload=payload, qos=0, retain=True)
 
@@ -164,6 +169,9 @@ class Registerer:
 
         for name, code in switch_tmpl["reg"]:
             self.__send_config("switch",self.__generate_switch(name=name, stat_t=stat_t, cmd_t=cmd_t, json_code=code, unique_id=uid_pref+code, dev=ch_dev))        
+
+        #initial values (retained)
+        self.client.publish(topic=stat_t, payload=json.dumps(chamber_default_regulator), qos=0, retain=True)
 
         '''logger'''
         stat_t=f"chambers/{chamber_id}/logger/get"
@@ -182,6 +190,9 @@ class Registerer:
         for name, code, unit in sensor_tmpl["log"]:
             self.__send_config("sensor",self.__generate_sensor(name=name, stat_t=stat_t, json_code=code, unique_id=uid_pref+code, dev=ch_dev))
 
+        #initial values (retained)
+        self.client.publish(topic=stat_t, payload=json.dumps(chamber_default_logger), qos=0, retain=True)
+
         '''starter'''
         #WIP
 
@@ -189,15 +200,16 @@ class Registerer:
         uid_pref=f"ch{chamber_id}_msc_"
         
         #chamber nickname
-        topic_t=f"chambers/{chamber_id}/misc/nickname"
+        stat_t=f"chambers/{chamber_id}/misc/nickname"
         name, code=MISC_chamber_nick
-        self.__send_config("text",self.__generate_text(name=name, stat_t=topic_t, cmd_t=topic_t, json_code=code, unique_id=uid_pref+code, dev=ch_dev, retain=True)) 
-    
+        self.__send_config("text",self.__generate_text(name=name, stat_t=stat_t, cmd_t=stat_t, json_code=code, unique_id=uid_pref+code, dev=ch_dev, retain=True)) 
+        self.client.publish(topic=stat_t, payload=json.dumps(chamber_default_nickname), qos=0, retain=True)
+
         #connstatus
-        topic_t=f"chambers/{chamber_id}/misc/conn_stat"
+        stat_t=f"chambers/{chamber_id}/misc/conn_stat"
         name,code=MISC_conn_status
-        self.__send_config("sensor",self.__generate_sensor(name=name, stat_t=topic_t, json_code=code, unique_id=uid_pref+code, dev=ch_dev))
-        self.client.publish(topic=topic_t, payload=json.dumps({"CS":"Offline"}), qos=0, retain=True)#just init
+        self.__send_config("sensor",self.__generate_sensor(name=name, stat_t=stat_t, json_code=code, unique_id=uid_pref+code, dev=ch_dev))
+        self.client.publish(topic=stat_t, payload=json.dumps(chamber_default_connstat), qos=0, retain=True)
 
     def register_lab(self):
         dev={"ids": [f"lab"], "name": f"Lab 141"}
@@ -235,23 +247,22 @@ if __name__=="__main__":
         regist=Registerer()
 
         if args.mode=="chamber":
-            if "..." in args.chamber_id:
-                start, end=map(int, args.chamber_id.split("..."))
+            if "..." in args.id:
+                start, end=map(int, args.id.split("..."))
                 end+=1
                 for id in range(start, end):
                     regist.register_chamber(id)
     
             else:
-                id=int(args.chamber_id)
-                regist.register_chamber(id)
+                regist.register_chamber(int(args.id))
 
         elif args.mode=="lab":
             regist.register_lab()
         else:
-            print("Unknown execution mode")
+            print("[Error] Unknown execution mode")
         
     except Exception as e:
-        print(f"EXCEPTION: {e}")
+        print(f"[Error] Exception: {e}")
 
     finally:
         if regist is not None:
