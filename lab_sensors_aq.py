@@ -4,7 +4,8 @@ import threading
 import signal
 import sys
 
-MQTT_BROKER="LCSRP5.local"
+# MQTT_BROKER="LCSRP5.local"
+MQTT_BROKER="127.0.0.1" #same device, mDNS unnecessary
 MQTT_PORT=1883
 MQTT_LAB_SEN_TOPIC="lab/readings"
 MQTT_LAB_SEN_GRAPH_TOPIC="lab/graph"
@@ -25,9 +26,10 @@ class LabSender:
         try:
             self.mqtt_client=mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION2)
             self.mqtt_client.connect(host=MQTT_BROKER, port=MQTT_PORT)
+            self.mqtt_client.loop_start()
 
         except Exception as e:
-            sys.stderr.write(f"[EXCEPT] {e}")
+            sys.stderr.write(f"[EXCEPT] {e}\n")
             self._stop_cond.set()
 
     def main_loop(self):
@@ -39,12 +41,16 @@ class LabSender:
                 self._stop_cond.wait(timeout=SEND_PERIOD_S)
 
             except Exception as e:
-                sys.stderr.write(f"[EXCEPT] {e}")
+                sys.stderr.write(f"[EXCEPT] {e}\n")
                 self._stop_cond.set()
         self.cleanup()
 
     def cleanup(self):
-        pass
+        try:
+            self.mqtt_client.loop_stop()
+            self.mqtt_client.disconnect()
+        except Exception:
+            pass
 
     def _assemble_graph_json(self):
         data={
