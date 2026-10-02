@@ -7,8 +7,8 @@ import sys
 # MQTT_BROKER="LCSRP5.local"
 MQTT_BROKER="127.0.0.1" #same device, mDNS unnecessary
 MQTT_PORT=1883
-MQTT_LAB_SEN_TOPIC="lab/readings"
-MQTT_LAB_SEN_GRAPH_TOPIC="lab/graph"
+
+MQTT_LAB_SOCT_GRAPH_TOPIC="lab/SOCT_graph"
 RP5_CPU_TEMP_PATH="/sys/devices/virtual/thermal/thermal_zone0/temp"
 SEND_PERIOD_S=5
 
@@ -16,8 +16,6 @@ SEND_PERIOD_S=5
 class LabSender:
     def __init__(self):
         self._RP5_temperat=0.0
-        self._lab_temperat=None
-        self._lab_RH=None
         self._stop_cond=threading.Event()
 
         signal.signal(signal.SIGINT, self._system_signal_handler)
@@ -37,7 +35,7 @@ class LabSender:
             try:
                 self._RP5_temperat=self._get_RP5_temperat()
                 readigns_json=self._assemble_graph_json()
-                self.mqtt_client.publish(MQTT_LAB_SEN_GRAPH_TOPIC, readigns_json)
+                self.mqtt_client.publish(MQTT_LAB_SOCT_GRAPH_TOPIC, readigns_json)
                 self._stop_cond.wait(timeout=SEND_PERIOD_S)
 
             except Exception as e:
@@ -54,8 +52,6 @@ class LabSender:
 
     def _assemble_graph_json(self):
         data={
-            "HL":None,
-            "TL":None,
             "TR":round(self._RP5_temperat, 2),
         }
         return json.dumps(data)

@@ -55,9 +55,9 @@ MISC_conn_status=("Conn_status", "CS")
 
 lab_sensor_tmpl={
     "sen": [
-    ("T_room",       "TL", "\u00b0C"),
-    ("RH_room",      "HL", "%"),
-    ("T_RP5",       "TR", "\u00b0C")]
+    ("T_room",       "TL", "\u00b0C", "lab/RHT_graph"),
+    ("RH_room",      "HL", "%", "lab/RHT_graph"),
+    ("T_RP5",        "TR", "\u00b0C", "lab/SOCT_graph")]
 }
 
 class Registerer:
@@ -217,8 +217,7 @@ class Registerer:
 
         '''readings'''
         uid_pref="lab_sen_"
-        stat_t="lab/graph"
-        for name, json_code, unit in lab_sensor_tmpl["sen"]:
+        for name, json_code, unit, stat_t in lab_sensor_tmpl["sen"]:
             self.__send_config("sensor",self.__generate_sensor(name=name, stat_t=stat_t, json_code=json_code, unique_id=uid_pref+json_code, dev=dev, unit=unit, state_class="measurement"))
 
         #init value (retained)
