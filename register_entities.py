@@ -21,6 +21,7 @@ sensor_tmpl={
 chamber_default_readings={"HI": None, "TI": None, "HE": None, "TE": None, "MC": 0.0, "MV": 0.0, "MP": 0.0}
 chamber_default_regulator={"SP": 0.0, "HI": 0.0, "EN": None}
 chamber_default_logger={"EN": "OFF", "FP": "", "FN": "", "IR": "OFF", "IC": "OFF", "IA": "OFF", "IM": "OFF", "SI": 1, "MR": 10000}
+chamber_default_lab_logger={"EN": "OFF", "FP": "", "FN": "", "SI": 1, "MR": 10000}
 chamber_default_nickname={"CN": "None"}
 chamber_default_connstat={"CS": "Offline"}
 
@@ -212,7 +213,7 @@ class Registerer:
         self.client.publish(topic=stat_t, payload=json.dumps(chamber_default_connstat), qos=0, retain=True)
 
     def register_lab(self):
-        dev={"ids": [f"lab"], "name": f"Lab 141"}
+        dev={"ids": [f"lab"], "name": f"Lab 142"}
         print(f"\nRegistering Lab:")
 
         '''readings'''
@@ -221,9 +222,35 @@ class Registerer:
             self.__send_config("sensor",self.__generate_sensor(name=name, stat_t=stat_t, json_code=json_code, unique_id=uid_pref+json_code, dev=dev, unit=unit, state_class="measurement"))
 
         #init value (retained)
-        payload=json.dumps({"TL":None,"HL":None,"TR":None})
-        self.client.publish(topic=stat_t, payload=payload, qos=0, retain=True)
+        payload=json.dumps({"TL":None,"HL":None})
+        self.client.publish(topic="lab/readings", payload=payload, qos=0, retain=True)
+        self.client.publish(topic="lab/RHT_graph", payload=payload, qos=0, retain=True)
 
+        '''Lab station status'''
+        uid_pref="lab_msc_"
+        stat_t=f"lab/misc/conn_stat"
+        name,code=MISC_conn_status
+        self.__send_config("sensor",self.__generate_sensor(name=name, stat_t=stat_t, json_code=code, unique_id=uid_pref+code, dev=dev))
+        self.client.publish(topic=stat_t, payload=json.dumps(chamber_default_connstat), qos=0, retain=True)
+
+
+        '''logger'''
+        stat_t=f"lab/logger/get"
+        cmd_t=f"lab/logger/set"
+        uid_pref=f"lab_log_"
+        self.__send_config("switch",self.__generate_switch(name="logger_state", stat_t=stat_t, cmd_t=cmd_t, json_code="EN", unique_id=uid_pref+"EN", dev=dev)) 
+        for name, code, unit, min, max, step in numbers_tmpl["log"]:
+            self.__send_config("number",self.__generate_number(name=name, stat_t=stat_t, cmd_t=cmd_t, json_code=code, unique_id=uid_pref+code, dev=dev, unit=unit,
+            min=min, max=max, step=step))
+
+        for name, code in text_tmpl["log"]:
+            self.__send_config("text",self.__generate_text(name=name, stat_t=stat_t, cmd_t=cmd_t, json_code=code, unique_id=uid_pref+code, dev=dev)) 
+
+        for name, code, unit in sensor_tmpl["log"]:
+            self.__send_config("sensor",self.__generate_sensor(name=name, stat_t=stat_t, json_code=code, unique_id=uid_pref+code, dev=dev))
+
+        #initial values (retained)
+        self.client.publish(topic=stat_t, payload=json.dumps(chamber_default_lab_logger), qos=0, retain=True)
 
 
 
