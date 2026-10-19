@@ -25,7 +25,6 @@ def get_regulator_get_topic(id:int)->str:
 class Chamber_profile:
     def __init__(self, chamber_id:int=0, is_lab:bool=False):
         self.file_name:str="None"
-        self.__file_name_base:str=""
         self.__file_path:Path=None
         self.is_lab=is_lab
 
@@ -45,7 +44,6 @@ class Chamber_profile:
 
         #internal
         self.__record_index=0
-        self.__file_index=0
         self.__reading_counter=0
 
         if self.is_lab:
@@ -78,35 +76,35 @@ class Chamber_profile:
                 self.max_records=1
             
             self.enabled=self.__get_TF(settings.get("EN", False)) #change in any above should disable the logger
-            self.__update_save_process()
-
-    def __generate_filename(self):
-        self.file_name=self.__file_name_base
-        if self.__file_index>0:
-            self.file_name+=f"_{self.__file_index}"
-        self.file_name+=".csv"
-        self.__file_path=BASE_DIR/self.file_name
+            self.__record_index=0
+            self.__reading_counter=0
+            # self.__update_save_process()
 
     def __update_save_process(self):
         self.__record_index=0
-        self.__file_index=0
         self.__reading_counter=0
 
         if self.enabled:
             #create filename base
             timestamp=datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             if self.is_lab:
-                self.__file_name_base=f"{timestamp}_LAB142"
+                subfolder=Path("Lab_142/")
+                self.file_name=f"{timestamp}_LAB142"
             else:
-                self.__file_name_base=f"{timestamp}_CH{self.chamber_id}"
+                subfolder=Path(f"Chamb_{self.chamber_id}/")
+                self.file_name=f"{timestamp}_CH{self.chamber_id}"
 
             postfix=(self.file_postfix or "").replace(" ","_")
+
             if postfix:
-                self.__file_name_base+=f"_{postfix}"
-            self.__generate_filename()
+                self.file_name+=f"_{postfix}"
+
+            self.file_name+=".csv"
+            self.__file_path=BASE_DIR/subfolder/self.file_name
+
+            self.__file_path.parent.mkdir(parents=True, exist_ok=True)
         else:
-            #self.file_name=""
-            self.__file_name_base=""
+            self.file_name=""
 
     def get_settings(self)->dict:
         with self.mutex:
@@ -159,34 +157,34 @@ class Chamber_profile:
     def save_data(self, readings:dict)->bool:
         '''saves readings to apropriate CSV if aplicable (otherwise no-op). 
         Returns True if sending logger_settings to MQTT is required.'''
-        file_change=False
+        new_file=False
         with self.mutex:
             if self.enabled:
 
                 #check save_interval
                 if self.__reading_counter!=(self.save_interval-1):
                     self.__reading_counter+=1
-                    return file_change
+                    return new_file
+                
                 else:
                     self.__reading_counter=0
 
                     #check if the file is not filled
                     if self.__record_index==self.max_records:
                         self.__record_index=0
-                        self.__file_index+=1
 
                     if self.__record_index==0:
-                        self.__generate_filename()
-                        file_change=True
+                        self.__update_save_process()
+                        new_file=True
 
                     #open the file
                     with open(self.__file_path, "a") as file:
-                        if file_change:
+                        if new_file:
                             file.write(self.__get_header())
 
                         file.write(self.__get_readings(readings))
                         self.__record_index+=1
-        return file_change
+        return new_file
 
     def __get_header(self)->str:
         header="No.;Timestamp;"

@@ -30,7 +30,7 @@ numbers_tmpl={
         ("SP","SP", "%", 0, 100, 0.5),
         ("Hist","HI", "%", 0, 20, 0.1)],
     "log": [
-        ("logger_max_records","MR", "", "5000", "50000", "5000"),
+        ("logger_max_records","MR", "", "5000", "100000", "10000"),
         ("logger_save_interval","SI", "s", "1", "60", "1")]
 }
 
