@@ -11,10 +11,6 @@ BROKER_PORT=1883
 CHAMBER_DISCOVERY_TIME=2
 BASE_DIR=Path("/home/lcsuser/data_partition/LCS_CSVs")
 
-chamber_default_readings={"HI": None, "TI": None, "HE": None, "TE": None, "MC": 0.0, "MV": 0.0, "MP": 0.0}
-chamber_default_regulator={"SP": 0.0, "HI": 0.0, "EN": None}
-lab_default_readings={"HL": None, "TL": None}
-
 def get_readings_topic(id:int)->str:
     return f"chambers/{id}/readings"
 
@@ -300,38 +296,6 @@ class Logger_controler:
             print(f"Debug - on_log_set: {e}")
             return
 
-    def __on_chamb_offline(self, client, userdata, msg):
-        try:
-            id=int(msg.topic.split('/')[1])
-            chamb=self.chambers.get(id, None)
-            if chamb is not None:
-                payload=json.loads(msg.payload.decode("utf-8"))
-
-                status=payload.get("CS", " ")
-                if status=="Offline":
-                    #cleaning the topics
-                    self.client.publish(topic=f"chambers/{id}/readings" , payload=json.dumps(chamber_default_readings), retain=False)
-                    self.client.publish(topic=f"chambers/{id}/RHT_graph", payload=json.dumps(chamber_default_readings), retain=False)
-                    self.client.publish(topic=f"chambers/{id}/regulator", payload=json.dumps(chamber_default_regulator), retain=False)
-
-        except Exception as e:
-            print(f"Debug - on_chamb_offline: {e}")
-            return
-        
-    def __on_lab_offline(self, client, userdata, msg):
-        try:
-            payload=json.loads(msg.payload.decode("utf-8"))
-
-            status=payload.get("CS", " ")
-            if status=="Offline":
-                #cleaning the topics
-                self.client.publish(topic=f"lab/readings" , payload=json.dumps(lab_default_readings), retain=False)
-                self.client.publish(topic=f"lab/RHT_graph", payload=json.dumps(lab_default_readings), retain=False)
-
-        except Exception as e:
-            print(f"Debug - on_lab_offline: {e}")
-            return
-
     def __discover_lab_cb(self, client, userdata, msg):
         '''loads retained settings at script startup'''
         try:
@@ -401,15 +365,12 @@ class Logger_controler:
         self.client.message_callback_add(sub="chambers/+/regulator/get", callback=self.__on_reg_get_cb)
         self.client.subscribe("chambers/+/logger/set")
         self.client.message_callback_add(sub="chambers/+/logger/set", callback=self.__on_log_set_cb)
-        self.client.subscribe("chambers/+/misc/conn_stat")
-        self.client.message_callback_add(sub="chambers/+/misc/conn_stat", callback=self.__on_chamb_offline)
 
         self.client.subscribe("lab/logger/set")
         self.client.message_callback_add(sub="lab/logger/set", callback=self.__on_lab_log_set_cb)
         self.client.subscribe("lab/readings")
         self.client.message_callback_add(sub="lab/readings", callback=self.__on_lab_readings_cb)
-        self.client.subscribe("lab/misc/conn_stat")
-        self.client.message_callback_add(sub="lab/misc/conn_stat", callback=self.__on_lab_offline)
+
 
 if __name__=="__main__":
     try:
