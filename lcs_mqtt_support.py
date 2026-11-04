@@ -86,7 +86,13 @@ class Support:
                 forward=self.chambers[id].increment()
 
             if forward:
-                self.client.publish(topic=f"chambers/{id}/RHT_graph",payload=msg.payload,retain=False)
+                payload:dict=json.loads(msg.payload)
+                forward_payload:dict={}
+                forward_payload["HI"]=round(payload.get("HI", 0), 2)
+                forward_payload["TI"]=round(payload.get("TI", 0), 2)
+                forward_payload["HE"]=round(payload.get("HE", 0), 2)
+                forward_payload["TE"]=round(payload.get("TE", 0), 2)
+                self.client.publish(topic=f"chambers/{id}/RHT_graph",payload=json.dumps(forward_payload),retain=False)
 
         except Exception as e:
             print(f"Exception on_chamber_readings: {e}")
@@ -125,7 +131,11 @@ class Support:
                 forward=self.labs[id].increment()
 
             if forward:
-                self.client.publish(topic=f"lab/{id}/RHT_graph",payload=msg.payload,retain=False)
+                payload:dict=json.dumps(msg.payload)
+                forward_payload:dict={}
+                forward_payload["HL"]=round(payload.get(key="HL", default=0), 2)
+                forward_payload["TL"]=round(payload.get(key="TL", default=0), 2)
+                self.client.publish(topic=f"lab/{id}/RHT_graph",payload=json.dumps(forward_payload),retain=False)
 
         except Exception as e:
             print(f"Exception on_lab_readings: {e}")
